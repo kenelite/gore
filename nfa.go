@@ -63,37 +63,6 @@ func toNfa(ctx *parseContext) *state {
 	return outerStart
 }
 
-func toNfa2(ctx *parseContext) *state {
-	startState, endState := tokenToNfa(&ctx.tokens[0]) // <1>
-
-	for i := 1; i < len(ctx.tokens); i++ { // <2>
-		startNext, endNext := tokenToNfa(&ctx.tokens[i]) // <3>
-		endState.transitions[epsilonChar] = append(
-			endState.transitions[epsilonChar],
-			startNext,
-		)                  // <4>
-		endState = endNext // <5>
-	}
-
-	start := &state{ // <6>
-		transitions: map[uint8][]*state{
-			epsilonChar: {startState},
-		},
-		start: true,
-	}
-	end := &state{ // 7
-		transitions: map[uint8][]*state{},
-		terminal:    true,
-	}
-
-	endState.transitions[epsilonChar] = append(
-		endState.transitions[epsilonChar],
-		end,
-	) // <8>
-
-	return start // <9>
-}
-
 func tokenToNfa(t *token) (*state, *state) {
 	start := &state{
 		transitions: map[uint8][]*state{},
