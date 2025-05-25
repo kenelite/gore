@@ -17,7 +17,7 @@ func getChar(input string, pos int) uint8 {
 	return input[pos]
 }
 
-func (s *state) check(input string, pos int) bool {
+func (s *State) check(input string, pos int) bool {
 	ch := getChar(input, pos)
 
 	// If we're at the end of input and in a terminal state, return true

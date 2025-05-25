@@ -4,26 +4,26 @@ const (
 	epsilonChar uint8 = 0
 )
 
-type state struct {
+type State struct {
 	start       bool
 	terminal    bool
-	transitions map[uint8][]*state
+	transitions map[uint8][]*State
 }
 
 // empty character
 
-func toNfa(ctx *parseContext) *state {
+func toNfa(ctx *parseContext) *State {
 	if len(ctx.tokens) == 0 {
 		// Special case: empty pattern
-		start := &state{
-			transitions: map[uint8][]*state{},
+		start := &State{
+			transitions: map[uint8][]*State{},
 			start:       true,
 		}
-		end := &state{
-			transitions: map[uint8][]*state{},
+		end := &State{
+			transitions: map[uint8][]*State{},
 			terminal:    true,
 		}
-		start.transitions[epsilonChar] = []*state{end}
+		start.transitions[epsilonChar] = []*State{end}
 		return start
 	}
 
@@ -34,7 +34,7 @@ func toNfa(ctx *parseContext) *state {
 
 		// Add epsilon transition from current end to next start
 		if endState.transitions == nil {
-			endState.transitions = make(map[uint8][]*state)
+			endState.transitions = make(map[uint8][]*State)
 		}
 		endState.transitions[epsilonChar] = append(endState.transitions[epsilonChar], nextStart)
 
@@ -42,39 +42,39 @@ func toNfa(ctx *parseContext) *state {
 	}
 
 	// Wrap with outer start and terminal end state
-	outerStart := &state{
-		transitions: map[uint8][]*state{
+	outerStart := &State{
+		transitions: map[uint8][]*State{
 			epsilonChar: {startState},
 		},
 		start: true,
 	}
 
-	outerEnd := &state{
-		transitions: map[uint8][]*state{},
+	outerEnd := &State{
+		transitions: map[uint8][]*State{},
 		terminal:    true,
 	}
 
 	// Add epsilon transition from last real end to outerEnd
 	if endState.transitions == nil {
-		endState.transitions = make(map[uint8][]*state)
+		endState.transitions = make(map[uint8][]*State)
 	}
 	endState.transitions[epsilonChar] = append(endState.transitions[epsilonChar], outerEnd)
 
 	return outerStart
 }
 
-func tokenToNfa(t *token) (*state, *state) {
-	start := &state{
-		transitions: map[uint8][]*state{},
+func tokenToNfa(t *token) (*State, *State) {
+	start := &State{
+		transitions: map[uint8][]*State{},
 	}
-	end := &state{
-		transitions: map[uint8][]*state{},
+	end := &State{
+		transitions: map[uint8][]*State{},
 	}
 
 	switch t.tokenType {
 	case literal:
 		ch := t.value.(uint8)
-		start.transitions[ch] = []*state{end}
+		start.transitions[ch] = []*State{end}
 
 	case or:
 		values := t.value.([]token)
@@ -84,14 +84,14 @@ func tokenToNfa(t *token) (*state, *state) {
 		s1, e1 := tokenToNfa(&left)
 		s2, e2 := tokenToNfa(&right)
 
-		start.transitions[epsilonChar] = []*state{s1, s2}
-		e1.transitions[epsilonChar] = []*state{end}
-		e2.transitions[epsilonChar] = []*state{end}
+		start.transitions[epsilonChar] = []*State{s1, s2}
+		e1.transitions[epsilonChar] = []*State{end}
+		e2.transitions[epsilonChar] = []*State{end}
 
 	case bracket:
 		literals := t.value.(map[uint8]bool)
 		for l := range literals {
-			start.transitions[l] = []*state{end}
+			start.transitions[l] = []*State{end}
 		}
 
 	case group, groupUncaptured:
@@ -102,7 +102,7 @@ func tokenToNfa(t *token) (*state, *state) {
 		p := t.value.(repeatPayload)
 
 		if p.min == 0 {
-			start.transitions[epsilonChar] = []*state{end}
+			start.transitions[epsilonChar] = []*State{end}
 		}
 
 		var copyCount int
@@ -116,7 +116,7 @@ func tokenToNfa(t *token) (*state, *state) {
 			copyCount = p.max
 		}
 
-		makeNfa := func(tok token) (*state, *state) {
+		makeNfa := func(tok token) (*State, *State) {
 			if tok.tokenType == group || tok.tokenType == groupUncaptured {
 				toks := tok.value.([]token)
 				return tokensToNfa(toks)
@@ -149,7 +149,7 @@ func tokenToNfa(t *token) (*state, *state) {
 	return start, end
 }
 
-func tokensToNfa(tokens []token) (*state, *state) {
+func tokensToNfa(tokens []token) (*State, *State) {
 	start, end := tokenToNfa(&tokens[0])
 	for i := 1; i < len(tokens); i++ {
 		s, e := tokenToNfa(&tokens[i])

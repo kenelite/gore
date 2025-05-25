@@ -78,3 +78,70 @@ func TestMatch(t *testing.T) {
 		})
 	}
 }
+
+func TestFindFunctions(t *testing.T) {
+	t.Run("FindString", func(t *testing.T) {
+		tests := []struct {
+			regex, input, want string
+			found              bool
+		}{
+			{"(ab)*", "xxababyy", "abab", true},
+			{"a+", "aa bb aaa", "aa", true},
+			{"z+", "xxxyyy", "", false},
+		}
+
+		for _, tt := range tests {
+			got, ok := FindString(tt.regex, tt.input)
+			if got != tt.want || ok != tt.found {
+				t.Errorf("FindString(%q, %q) = %q, %v; want %q, %v",
+					tt.regex, tt.input, got, ok, tt.want, tt.found)
+			}
+		}
+	})
+
+	t.Run("FindAllString", func(t *testing.T) {
+		tests := []struct {
+			regex, input string
+			want         []string
+		}{
+			{"a+", "aa bb aaa c", []string{"aa", "aaa"}},
+			{"b+", "aabbbccbb", []string{"bbb", "bb"}},
+			{"x+", "abcdef", []string{}},
+		}
+
+		for _, tt := range tests {
+			got := FindAllString(tt.regex, tt.input)
+			if len(got) != len(tt.want) {
+				t.Errorf("FindAllString(%q, %q) = %v; want %v",
+					tt.regex, tt.input, got, tt.want)
+				continue
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("FindAllString(%q, %q)[%d] = %q; want %q",
+						tt.regex, tt.input, i, got[i], tt.want[i])
+				}
+			}
+		}
+	})
+
+	t.Run("FindStringIndex", func(t *testing.T) {
+		tests := []struct {
+			regex, input string
+			wantStart    int
+			wantEnd      int
+		}{
+			{"a+", "xxaaab", 2, 5},
+			{"b+", "aaabbbbccc", 3, 7},
+			{"z+", "abcdef", -1, -1},
+		}
+
+		for _, tt := range tests {
+			start, end := FindStringIndex(tt.regex, tt.input)
+			if start != tt.wantStart || end != tt.wantEnd {
+				t.Errorf("FindStringIndex(%q, %q) = (%d, %d); want (%d, %d)",
+					tt.regex, tt.input, start, end, tt.wantStart, tt.wantEnd)
+			}
+		}
+	})
+}
