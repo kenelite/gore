@@ -13,6 +13,57 @@ type state struct {
 // empty character
 
 func toNfa(ctx *parseContext) *state {
+	if len(ctx.tokens) == 0 {
+		// Special case: empty pattern
+		start := &state{
+			transitions: map[uint8][]*state{},
+			start:       true,
+		}
+		end := &state{
+			transitions: map[uint8][]*state{},
+			terminal:    true,
+		}
+		start.transitions[epsilonChar] = []*state{end}
+		return start
+	}
+
+	startState, endState := tokenToNfa(&ctx.tokens[0])
+
+	for i := 1; i < len(ctx.tokens); i++ {
+		nextStart, nextEnd := tokenToNfa(&ctx.tokens[i])
+
+		// Add epsilon transition from current end to next start
+		if endState.transitions == nil {
+			endState.transitions = make(map[uint8][]*state)
+		}
+		endState.transitions[epsilonChar] = append(endState.transitions[epsilonChar], nextStart)
+
+		endState = nextEnd
+	}
+
+	// Wrap with outer start and terminal end state
+	outerStart := &state{
+		transitions: map[uint8][]*state{
+			epsilonChar: {startState},
+		},
+		start: true,
+	}
+
+	outerEnd := &state{
+		transitions: map[uint8][]*state{},
+		terminal:    true,
+	}
+
+	// Add epsilon transition from last real end to outerEnd
+	if endState.transitions == nil {
+		endState.transitions = make(map[uint8][]*state)
+	}
+	endState.transitions[epsilonChar] = append(endState.transitions[epsilonChar], outerEnd)
+
+	return outerStart
+}
+
+func toNfa2(ctx *parseContext) *state {
 	startState, endState := tokenToNfa(&ctx.tokens[0]) // <1>
 
 	for i := 1; i < len(ctx.tokens); i++ { // <2>
@@ -55,46 +106,37 @@ func tokenToNfa(t *token) (*state, *state) {
 	case literal:
 		ch := t.value.(uint8)
 		start.transitions[ch] = []*state{end}
-		
+
 	case or:
 		values := t.value.([]token)
 		left := values[0]
 		right := values[1]
 
-		s1, e1 := tokenToNfa(&left)  // <1>
-		s2, e2 := tokenToNfa(&right) // <1>
+		s1, e1 := tokenToNfa(&left)
+		s2, e2 := tokenToNfa(&right)
 
-		start.transitions[epsilonChar] = []*state{s1, s2} // <2>
-		e1.transitions[epsilonChar] = []*state{end}       // <3>
-		e2.transitions[epsilonChar] = []*state{end}       // <3>
+		start.transitions[epsilonChar] = []*state{s1, s2}
+		e1.transitions[epsilonChar] = []*state{end}
+		e2.transitions[epsilonChar] = []*state{end}
 
 	case bracket:
 		literals := t.value.(map[uint8]bool)
-
-		for l := range literals { // <1>
-			start.transitions[l] = []*state{end} // <2>
+		for l := range literals {
+			start.transitions[l] = []*state{end}
 		}
 
 	case group, groupUncaptured:
 		tokens := t.value.([]token)
-		start, end = tokenToNfa(&tokens[0])
-		for i := 1; i < len(tokens); i++ {
-			ts, te := tokenToNfa(&tokens[i])
-			end.transitions[epsilonChar] = append(
-				end.transitions[epsilonChar],
-				ts,
-			)
-			end = te
-		}
+		start, end = tokensToNfa(tokens)
+
 	case repeat:
 		p := t.value.(repeatPayload)
 
-		if p.min == 0 { // <1>
+		if p.min == 0 {
 			start.transitions[epsilonChar] = []*state{end}
 		}
 
-		var copyCount int // <2>
-
+		var copyCount int
 		if p.max == repeatInfinity {
 			if p.min == 0 {
 				copyCount = 1
@@ -105,52 +147,45 @@ func tokenToNfa(t *token) (*state, *state) {
 			copyCount = p.max
 		}
 
-		from, to := tokenToNfa(&p.token) // <3>
-		start.transitions[epsilonChar] = append( // <4>
-			start.transitions[epsilonChar],
-			from,
-		)
+		makeNfa := func(tok token) (*state, *state) {
+			if tok.tokenType == group || tok.tokenType == groupUncaptured {
+				toks := tok.value.([]token)
+				return tokensToNfa(toks)
+			}
+			return tokenToNfa(&tok)
+		}
 
-		for i := 2; i <= copyCount; i++ { // <5>
-			s, e := tokenToNfa(&p.token)
+		from, to := makeNfa(p.token)
+		start.transitions[epsilonChar] = append(start.transitions[epsilonChar], from)
 
-			// connect the end of the previous one
-			// to the start of this one
-			to.transitions[epsilonChar] = append( // <6>
-				to.transitions[epsilonChar],
-				s,
-			)
-
-			// keep track of the previous NFA's entry and exit states
-			from = s // <7>
-			to = e   // <7>
-
-			// after the minimum required amount of repetitions
-			// the rest must be optional, thus we add an
-			// epsilon transition to the start of each NFA
-			// so that we can skip them if needed
-			if i > p.min { // <8>
-				s.transitions[epsilonChar] = append(
-					s.transitions[epsilonChar],
-					end,
-				)
+		for i := 2; i <= copyCount; i++ {
+			s, e := makeNfa(p.token)
+			to.transitions[epsilonChar] = append(to.transitions[epsilonChar], s)
+			to = e
+			if i > p.min {
+				s.transitions[epsilonChar] = append(s.transitions[epsilonChar], end)
 			}
 		}
 
-		to.transitions[epsilonChar] = append( // <9>
-			to.transitions[epsilonChar],
-			end,
-		)
+		to.transitions[epsilonChar] = append(to.transitions[epsilonChar], end)
 
-		if p.max == repeatInfinity { // <10>
-			end.transitions[epsilonChar] = append(
-				end.transitions[epsilonChar],
-				from,
-			)
+		if p.max == repeatInfinity {
+			end.transitions[epsilonChar] = append(end.transitions[epsilonChar], from)
 		}
+
 	default:
-		panic("unknown type of token")
+		panic("unknown token type")
 	}
 
+	return start, end
+}
+
+func tokensToNfa(tokens []token) (*state, *state) {
+	start, end := tokenToNfa(&tokens[0])
+	for i := 1; i < len(tokens); i++ {
+		s, e := tokenToNfa(&tokens[i])
+		end.transitions[epsilonChar] = append(end.transitions[epsilonChar], s)
+		end = e
+	}
 	return start, end
 }
