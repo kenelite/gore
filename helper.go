@@ -17,29 +17,31 @@ func getChar(input string, pos int) uint8 {
 	return input[pos]
 }
 
-func (s *state) check(input string, pos int) bool { // <1>
-	ch := getChar(input, pos) // <2>
+func (s *state) check(input string, pos int) bool {
+	ch := getChar(input, pos)
 
-	if ch == endOfText && s.terminal { // <3>
+	// If we're at the end of input and in a terminal state, return true
+	if ch == endOfText && s.terminal {
 		return true
 	}
 
-	if states := s.transitions[ch]; len(states) > 0 { // <4>
-		nextState := states[0]
-		if nextState.check(input, pos+1) { // <5>
-			return true
+	// Explore all regular transitions (consume one character)
+	if states, ok := s.transitions[ch]; ok {
+		for _, next := range states {
+			if next.check(input, pos+1) {
+				return true
+			}
 		}
 	}
 
-	for _, state := range s.transitions[epsilonChar] { // <6>
-		if state.check(input, pos) { // <7>
-			return true
-		}
-
-		if ch == startOfText && state.check(input, pos+1) { // <8>
-			return true
+	// Explore all epsilon transitions (consume no characters)
+	if epsilonStates, ok := s.transitions[epsilonChar]; ok {
+		for _, next := range epsilonStates {
+			if next.check(input, pos) {
+				return true
+			}
 		}
 	}
 
-	return false // <9>
+	return false
 }
